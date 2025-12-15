@@ -358,9 +358,11 @@ User's Code Attempt:
 
 Provide a JSON response with:
 1. "level": one of "beginner", "intermediate", or "advanced"
-2. "indicators": list of 3-5 specific observations that informed your assessment
-3. "strengths": list of 2-3 things they did well (even if basic)
-4. "growth_areas": list of 2-3 specific areas for improvement
+2. "code_works": boolean - true if the code would work correctly for the task (may have minor issues but fundamentally solves it), false if it has bugs or wouldn't work
+3. "code_issues": if code_works is false, list 1-3 specific issues that would prevent it from working
+4. "indicators": list of 3-5 specific observations that informed your assessment
+5. "strengths": list of 2-3 things they did well (even if basic)
+6. "growth_areas": list of 2-3 specific areas for improvement
 
 Consider:
 - Code structure and organization
@@ -383,17 +385,20 @@ Respond ONLY with valid JSON, no markdown formatting."""
     except:
         return {
             "level": "intermediate",
+            "code_works": False,
+            "code_issues": [],
             "indicators": ["Unable to parse assessment"],
             "strengths": ["Attempted the problem"],
             "growth_areas": ["Continue practicing"]
         }
 
 
-def generate_pedagogical_review(task_description: str, user_code: str, skill_level: str) -> str:
+def generate_pedagogical_review(task_description: str, user_code: str, skill_level: str, feedback_mode: str, code_works: bool) -> str:
     """Generate a comprehensive pedagogical code review."""
     client = get_client()
     
-    prompt = f"""You are CodeMentor, an expert programming educator. A {skill_level}-level programmer has asked you to help them understand code generation.
+    if feedback_mode == "concise":
+        prompt = f"""You are CodeMentor, an expert programming educator. A {skill_level}-level programmer has asked you to help them understand code generation.
 
 Their request: "{task_description}"
 
@@ -402,16 +407,48 @@ Their attempt:
 {user_code}
 ```
 
+{"Their code works correctly! Start with congratulations." if code_works else "Their code has issues that need fixing."}
+
+Provide a CONCISE code review with:
+
+1. **{"🎉 CONGRATULATIONS" if code_works else "QUICK ASSESSMENT"}** (1-2 sentences)
+   {"Congratulate them - their code works! Note it can still be improved." if code_works else "Briefly note the main issue."}
+
+2. **IMPROVED SOLUTION**
+   Provide a clean, improved Python solution with brief inline comments.
+
+3. **LINE-BY-LINE FIXES** (bullet points, max 5)
+   For each issue or improvement:
+   - `their code` → `improved code`: One sentence explanation
+   
+   Focus on the most important changes. Be direct and brief.
+
+4. **KEY TAKEAWAY** (1 sentence)
+   The single most important lesson from this review.
+
+Keep the entire response under 400 words. Be direct, no fluff."""
+
+    else:  # detailed mode
+        prompt = f"""You are CodeMentor, an expert programming educator. A {skill_level}-level programmer has asked you to help them understand code generation.
+
+Their request: "{task_description}"
+
+Their attempt:
+```python
+{user_code}
+```
+
+{"Their code works correctly! Start with congratulations before suggesting improvements." if code_works else "Their code has issues that need fixing."}
+
 Provide a comprehensive, educational response that:
 
-1. **ACKNOWLEDGE THEIR EFFORT** (2-3 sentences)
-   - Recognize what they tried to do
-   - Point out something specific they did reasonably well
+1. **{"🎉 CONGRATULATIONS!" if code_works else "ACKNOWLEDGE THEIR EFFORT"}** (2-3 sentences)
+   {"Congratulate them warmly - their code works! Then mention you'll show some refinements." if code_works else "Recognize what they tried to do and point out something specific they did reasonably well."}
 
 2. **IMPROVED SOLUTION**
    - Provide a well-crafted Python solution
    - Include helpful comments explaining key decisions
-   - Match complexity to their {skill_level} level (don't overwhelm beginners, don't patronize advanced users)
+   - Match complexity to their {skill_level} level
 
 3. **LINE-BY-LINE LEARNING** (for 3-5 key improvements)
    For each improvement, explain:
@@ -493,6 +530,8 @@ if "skill_assessment" not in st.session_state:
     st.session_state.skill_assessment = None
 if "review" not in st.session_state:
     st.session_state.review = None
+if "feedback_mode" not in st.session_state:
+    st.session_state.feedback_mode = "detailed"
 
 
 # Sidebar
@@ -535,6 +574,7 @@ with st.sidebar:
         st.session_state.user_code = ""
         st.session_state.skill_assessment = None
         st.session_state.review = None
+        st.session_state.feedback_mode = "detailed"
         st.rerun()
 
 
@@ -580,6 +620,35 @@ if st.session_state.step == 1:
         height=120,
         label_visibility="collapsed"
     )
+    
+    st.markdown("---")
+    st.markdown("**Choose your feedback style:**")
+    
+    col_mode1, col_mode2 = st.columns(2)
+    
+    with col_mode1:
+        detailed_selected = st.session_state.feedback_mode == "detailed"
+        if st.button(
+            "📚 Detailed Feedback" + (" ✓" if detailed_selected else ""),
+            use_container_width=True,
+            type="primary" if detailed_selected else "secondary"
+        ):
+            st.session_state.feedback_mode = "detailed"
+            st.rerun()
+        st.caption("In-depth explanations with readability vs performance analysis")
+    
+    with col_mode2:
+        concise_selected = st.session_state.feedback_mode == "concise"
+        if st.button(
+            "⚡ Concise Feedback" + (" ✓" if concise_selected else ""),
+            use_container_width=True,
+            type="primary" if concise_selected else "secondary"
+        ):
+            st.session_state.feedback_mode = "concise"
+            st.rerun()
+        st.caption("Quick line-by-line fixes, straight to the point")
+    
+    st.markdown("---")
     
     col1, col2 = st.columns([1, 4])
     with col1:
@@ -675,13 +744,21 @@ elif st.session_state.step == 3:
     
     # Display skill assessment
     level = st.session_state.skill_assessment.get("level", "intermediate")
+    code_works = st.session_state.skill_assessment.get("code_works", False)
+    code_issues = st.session_state.skill_assessment.get("code_issues", [])
+    
     level_colors = {
         "beginner": "level-beginner",
         "intermediate": "level-intermediate", 
         "advanced": "level-advanced"
     }
     
-    col1, col2 = st.columns([2, 3])
+    # Congratulations banner if code works
+    if code_works:
+        st.success("🎉 **Congratulations!** Your code works! It solves the task correctly. Below are some refinements to make it even better.")
+    
+    # Task and profile row
+    col1, col2 = st.columns([1, 2])
     
     with col1:
         st.markdown(f"""
@@ -690,19 +767,11 @@ elif st.session_state.step == 3:
             <p style="margin-bottom: 1rem;">
                 <span class="level-badge {level_colors.get(level, 'level-intermediate')}">{level}</span>
             </p>
-            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
-                Feedback tailored to your level
+            <p style="color: #8b949e; font-size: 0.9rem;">
+                {st.session_state.feedback_mode.title()} feedback mode
             </p>
         </div>
         """, unsafe_allow_html=True)
-        
-        with st.expander("💪 Your Strengths"):
-            for strength in st.session_state.skill_assessment.get("strengths", []):
-                st.markdown(f"✓ {strength}")
-        
-        with st.expander("🌱 Growth Areas"):
-            for area in st.session_state.skill_assessment.get("growth_areas", []):
-                st.markdown(f"→ {area}")
     
     with col2:
         st.markdown(f"""
@@ -711,9 +780,33 @@ elif st.session_state.step == 3:
             <p>{st.session_state.task_description}</p>
         </div>
         """, unsafe_allow_html=True)
-        
-        with st.expander("👀 View Your Code", expanded=False):
-            st.code(st.session_state.user_code, language="python")
+    
+    # Always show: Strengths, Growth Areas, and Code (not in expanders)
+    st.markdown("---")
+    
+    col_str, col_grow = st.columns(2)
+    
+    with col_str:
+        st.markdown("#### 💪 Your Strengths")
+        for strength in st.session_state.skill_assessment.get("strengths", []):
+            st.markdown(f"✅ {strength}")
+    
+    with col_grow:
+        st.markdown("#### 🌱 Growth Areas")
+        for area in st.session_state.skill_assessment.get("growth_areas", []):
+            st.markdown(f"🎯 {area}")
+    
+    # Show code issues if code doesn't work
+    if not code_works and code_issues:
+        st.markdown("#### ⚠️ Issues to Fix")
+        for issue in code_issues:
+            st.markdown(f"❌ {issue}")
+    
+    st.markdown("---")
+    
+    # Always show user's code
+    st.markdown("#### 👀 Your Code")
+    st.code(st.session_state.user_code, language="python")
     
     st.markdown("---")
     
@@ -723,19 +816,13 @@ elif st.session_state.step == 3:
             st.session_state.review = generate_pedagogical_review(
                 st.session_state.task_description,
                 st.session_state.user_code,
-                level
+                level,
+                st.session_state.feedback_mode,
+                code_works
             )
     
-    # Display the pedagogical review
+    # Display the pedagogical review (only once, as markdown)
     st.markdown('<div class="section-header">📚 Your Personalized Code Review</div>', unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div class="mentor-card">
-        {st.session_state.review}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Also render as proper markdown for code blocks
     st.markdown(st.session_state.review)
     
     st.markdown("---")
@@ -760,9 +847,10 @@ elif st.session_state.step == 3:
             st.rerun()
     
     with col3:
-        if st.button("📋 Copy Review", use_container_width=True):
-            st.code(st.session_state.review, language="markdown")
-            st.success("Review displayed above - copy from there!")
+        if st.button("🔀 Switch to " + ("Concise" if st.session_state.feedback_mode == "detailed" else "Detailed"), use_container_width=True):
+            st.session_state.feedback_mode = "concise" if st.session_state.feedback_mode == "detailed" else "detailed"
+            st.session_state.review = None
+            st.rerun()
 
 
 # Footer
