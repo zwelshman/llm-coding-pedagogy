@@ -532,6 +532,8 @@ if "review" not in st.session_state:
     st.session_state.review = None
 if "feedback_mode" not in st.session_state:
     st.session_state.feedback_mode = "detailed"
+if "task_mode" not in st.session_state:
+    st.session_state.task_mode = "generate"  # "generate" or "review"
 
 
 # Sidebar
@@ -575,6 +577,7 @@ with st.sidebar:
         st.session_state.skill_assessment = None
         st.session_state.review = None
         st.session_state.feedback_mode = "detailed"
+        st.session_state.task_mode = "generate"
         st.rerun()
 
 
@@ -583,43 +586,116 @@ st.markdown('<h1 class="main-title">CodeMentor</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Learn to code by doing, then understanding. AI-powered education that makes you a better programmer.</p>', unsafe_allow_html=True)
 
 # Progress indicator
-step_states = ["complete" if st.session_state.step > i else "active" if st.session_state.step == i else "pending" for i in range(1, 4)]
-st.markdown(f"""
-<div class="step-indicator">
-    <div class="step">
-        <div class="step-number step-{step_states[0]}">1</div>
-        <span class="step-label">Describe Task</span>
+if st.session_state.task_mode == "review":
+    # Two-step flow for review mode
+    step_states_review = ["complete" if st.session_state.step > 1 else "active" if st.session_state.step == 1 else "pending",
+                          "active" if st.session_state.step == 3 else "pending"]
+    st.markdown(f"""
+    <div class="step-indicator">
+        <div class="step">
+            <div class="step-number step-{step_states_review[0]}">1</div>
+            <span class="step-label">Paste Code</span>
+        </div>
+        <div class="step">
+            <div class="step-number step-{step_states_review[1]}">2</div>
+            <span class="step-label">Learn & Improve</span>
+        </div>
     </div>
-    <div class="step">
-        <div class="step-number step-{step_states[1]}">2</div>
-        <span class="step-label">Your Attempt</span>
+    """, unsafe_allow_html=True)
+else:
+    # Three-step flow for generate mode
+    step_states = ["complete" if st.session_state.step > i else "active" if st.session_state.step == i else "pending" for i in range(1, 4)]
+    st.markdown(f"""
+    <div class="step-indicator">
+        <div class="step">
+            <div class="step-number step-{step_states[0]}">1</div>
+            <span class="step-label">Describe Task</span>
+        </div>
+        <div class="step">
+            <div class="step-number step-{step_states[1]}">2</div>
+            <span class="step-label">Your Attempt</span>
+        </div>
+        <div class="step">
+            <div class="step-number step-{step_states[2]}">3</div>
+            <span class="step-label">Learn & Improve</span>
+        </div>
     </div>
-    <div class="step">
-        <div class="step-number step-{step_states[2]}">3</div>
-        <span class="step-label">Learn & Improve</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
 # Step 1: Task Description
 if st.session_state.step == 1:
-    st.markdown('<div class="section-header">📝 Step 1: What do you want to code?</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📝 Step 1: What would you like to do?</div>', unsafe_allow_html=True)
     
-    st.markdown("""
-    <div class="tip-callout">
-        <h4>💡 Tip: Be specific!</h4>
-        Instead of "sort a list", try "Generate code that sorts a list of dictionaries by a specific key in descending order"
-    </div>
-    """, unsafe_allow_html=True)
+    # Task mode selection
+    st.markdown("**Choose your mode:**")
     
-    task_input = st.text_area(
-        "Describe your coding task",
-        placeholder="Generate code that...\n\nExample: Generate code that finds all prime numbers up to N using an efficient algorithm",
-        height=120,
-        label_visibility="collapsed"
-    )
+    col_gen, col_rev = st.columns(2)
+    
+    with col_gen:
+        gen_selected = st.session_state.task_mode == "generate"
+        if st.button(
+            "🆕 Generate New Code" + (" ✓" if gen_selected else ""),
+            use_container_width=True,
+            type="primary" if gen_selected else "secondary"
+        ):
+            st.session_state.task_mode = "generate"
+            st.rerun()
+        st.caption("Describe a task, attempt it yourself, then learn from feedback")
+    
+    with col_rev:
+        rev_selected = st.session_state.task_mode == "review"
+        if st.button(
+            "🔍 Review Existing Code" + (" ✓" if rev_selected else ""),
+            use_container_width=True,
+            type="primary" if rev_selected else "secondary"
+        ):
+            st.session_state.task_mode = "review"
+            st.rerun()
+        st.caption("Paste code you've already written for a pedagogical review")
+    
+    st.markdown("---")
+    
+    if st.session_state.task_mode == "generate":
+        # Original generate flow
+        st.markdown("""
+        <div class="tip-callout">
+            <h4>💡 Tip: Be specific!</h4>
+            Instead of "sort a list", try "Generate code that sorts a list of dictionaries by a specific key in descending order"
+        </div>
+        """, unsafe_allow_html=True)
+        
+        task_input = st.text_area(
+            "Describe your coding task",
+            placeholder="Generate code that...\n\nExample: Generate code that finds all prime numbers up to N using an efficient algorithm",
+            height=120,
+            label_visibility="collapsed"
+        )
+        
+    else:
+        # Review existing code flow
+        st.markdown("""
+        <div class="tip-callout">
+            <h4>🔍 Code Review Mode</h4>
+            Paste your existing code below. Optionally describe what it's supposed to do for more targeted feedback.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        task_input = st.text_area(
+            "What does this code do? (optional but recommended)",
+            placeholder="This code is supposed to...\n\nExample: This code reads a CSV file and calculates the average of a column",
+            height=80,
+            label_visibility="collapsed"
+        )
+        
+        st.markdown("**Paste your code:**")
+        existing_code = st.text_area(
+            "Your existing code",
+            placeholder="# Paste your Python code here\n\ndef my_function():\n    ...",
+            height=200,
+            label_visibility="collapsed"
+        )
     
     st.markdown("---")
     st.markdown("**Choose your feedback style:**")
@@ -652,13 +728,24 @@ if st.session_state.step == 1:
     
     col1, col2 = st.columns([1, 4])
     with col1:
-        if st.button("Continue →", type="primary", use_container_width=True):
-            if task_input.strip():
-                st.session_state.task_description = task_input.strip()
-                st.session_state.step = 2
-                st.rerun()
-            else:
-                st.error("Please describe what you want to code")
+        if st.session_state.task_mode == "generate":
+            if st.button("Continue →", type="primary", use_container_width=True):
+                if task_input.strip():
+                    st.session_state.task_description = task_input.strip()
+                    st.session_state.step = 2
+                    st.rerun()
+                else:
+                    st.error("Please describe what you want to code")
+        else:
+            # Review mode - skip step 2 and go directly to feedback
+            if st.button("Get Review →", type="primary", use_container_width=True):
+                if existing_code.strip():
+                    st.session_state.task_description = task_input.strip() if task_input.strip() else "Review and improve this code"
+                    st.session_state.user_code = existing_code.strip()
+                    st.session_state.step = 3  # Skip to review
+                    st.rerun()
+                else:
+                    st.error("Please paste your code to review")
     
     with col2:
         with st.expander("📚 Example tasks to try"):
@@ -840,11 +927,18 @@ elif st.session_state.step == 3:
             st.rerun()
     
     with col2:
-        if st.button("✏️ Revise My Code", use_container_width=True):
-            st.session_state.step = 2
-            st.session_state.skill_assessment = None
-            st.session_state.review = None
-            st.rerun()
+        if st.session_state.task_mode == "generate":
+            if st.button("✏️ Revise My Code", use_container_width=True):
+                st.session_state.step = 2
+                st.session_state.skill_assessment = None
+                st.session_state.review = None
+                st.rerun()
+        else:
+            if st.button("✏️ Edit & Re-review", use_container_width=True):
+                st.session_state.step = 1
+                st.session_state.skill_assessment = None
+                st.session_state.review = None
+                st.rerun()
     
     with col3:
         if st.button("🔀 Switch to " + ("Concise" if st.session_state.feedback_mode == "detailed" else "Detailed"), use_container_width=True):
